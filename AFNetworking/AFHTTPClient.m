@@ -542,8 +542,10 @@ static void AFNetworkReachabilityReleaseCallback(const void *info) {
 {
     NSMutableArray *mutableOperations = [NSMutableArray array];
     for (NSURLRequest *request in requests) {
-        AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:nil failure:nil];
-        [mutableOperations addObject:operation];
+        @autoreleasepool {
+            AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request success:nil failure:nil];
+            [mutableOperations addObject:operation];
+        }
     }
     
     [self enqueueBatchOfHTTPRequestOperations:mutableOperations progressBlock:progressBlock completionBlock:completionBlock];
@@ -566,26 +568,28 @@ static void AFNetworkReachabilityReleaseCallback(const void *info) {
     NSPredicate *finishedOperationPredicate = [NSPredicate predicateWithFormat:@"isFinished == YES"];
     
     for (AFHTTPRequestOperation *operation in operations) {
-        AFCompletionBlock originalCompletionBlock = [operation.completionBlock copy];
-        operation.completionBlock = ^{
-            dispatch_queue_t queue = operation.successCallbackQueue ?: dispatch_get_main_queue();
-            dispatch_group_async(dispatchGroup, queue, ^{
-                if (originalCompletionBlock) {
-                    originalCompletionBlock();
-                }
-                
-                if (progressBlock) {
-                    progressBlock([[operations filteredArrayUsingPredicate:finishedOperationPredicate] count], [operations count]);
-                }
-                
-                dispatch_group_leave(dispatchGroup);
-            });
-        };
-        
-        dispatch_group_enter(dispatchGroup);
-        [batchedOperation addDependency:operation];
-        
-        [self enqueueHTTPRequestOperation:operation];
+        @autoreleasepool {
+            AFCompletionBlock originalCompletionBlock = [operation.completionBlock copy];
+            operation.completionBlock = ^{
+                dispatch_queue_t queue = operation.successCallbackQueue ?: dispatch_get_main_queue();
+                dispatch_group_async(dispatchGroup, queue, ^{
+                    if (originalCompletionBlock) {
+                        originalCompletionBlock();
+                    }
+                    
+                    if (progressBlock) {
+                        progressBlock([[operations filteredArrayUsingPredicate:finishedOperationPredicate] count], [operations count]);
+                    }
+                    
+                    dispatch_group_leave(dispatchGroup);
+                });
+            };
+            
+            dispatch_group_enter(dispatchGroup);
+            [batchedOperation addDependency:operation];
+            
+            [self enqueueHTTPRequestOperation:operation];
+        }
     }
     [self.operationQueue addOperation:batchedOperation];
 }
